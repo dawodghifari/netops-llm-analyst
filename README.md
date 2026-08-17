@@ -1,9 +1,9 @@
 # NetOps LLM Analyst
 
 An **LLM-powered analytics tool for CDN / edge-network operations data** — ask questions in
-plain English, get SQL-backed answers, and run data-mining over cost, streaming-quality, and
-capacity metrics. Built to explore how large language models can "empower data analytics and
-data mining" for **cost and quality governance** of large-scale distributed systems.
+plain English, get SQL-backed answers, and run data-mining over cost, streaming-quality and
+capacity metrics. The question it was built to answer: how much of network **cost and quality
+governance** can a language model do without ever being trusted to compute a number?
 
 ```
                     ┌──────────────── Streamlit app (local) ────────────────┐
@@ -77,6 +77,17 @@ and injected incidents that visibly degrade quality. All synthetic but internall
 (cost tracks traffic, quality drops during incidents), so analysis and Q&A return sensible
 results. No real or proprietary data.
 
----
+## Limitations
 
-*Built by Dawod Ghifari — exploring LLM-assisted data analytics for network cost & quality governance.*
+- **The data is synthetic, and that flatters the anomaly detection.** Incidents were injected
+  by a generator, so the anomalies are cleaner and better separated than real telemetry, where
+  a rebuffer spike and a measurement artefact look alike. Robust-z on real CDN data would need
+  a far more careful threshold.
+- **The text-to-SQL path has been verified against a mock model, not a paid API.** The guard,
+  the schema prompt and the execution path all run and are tested; what has not been measured
+  is how often a real model writes the wrong query for a right-sounding answer. That number is
+  the one that would decide whether this is usable, and I do not have it yet.
+- The read-only guard is an allow-list over single `SELECT` statements. It stops writes and
+  stacked statements. It is not a substitute for a database user with read-only grants.
+- Capacity forecasting is a linear trend on ~6 months of daily data. It will not see a step
+  change coming, which is the case that matters most.
