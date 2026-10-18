@@ -1,0 +1,5 @@
+# What the unit tests need: no Streamlit, no LLM SDK, no API key.
+pytest>=8.0
+pandas>=2.0
+numpy>=1.24
+python-dotenv>=1.0

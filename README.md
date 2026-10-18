@@ -1,5 +1,7 @@
 # NetOps LLM Analyst
 
+![CI](https://github.com/dawodghifari/netops-llm-analyst/actions/workflows/ci.yml/badge.svg)
+
 An **LLM-powered analytics tool for CDN / edge-network operations data** — ask questions in
 plain English, get SQL-backed answers, and run data-mining over cost, streaming-quality and
 capacity metrics. The question it was built to answer: how much of network **cost and quality
@@ -54,6 +56,11 @@ python data/generate_data.py  # creates data/netops.db (synthetic CDN dataset)
 streamlit run app/streamlit_app.py
 ```
 
+**Tests** need no API key: `pip install -r requirements-test.txt && python -m pytest tests`
+runs 34 tests in under a second. They generate the dataset in a temp folder and drive the
+text-to-SQL pipeline with a scripted fake model: the guard, the read-only connection, the
+query time limit, the retry-on-error loop, and the analysis numbers. CI runs them on every push.
+
 No API key yet? Everything except the **Ask** tab and the LLM-narration button works offline
 (the data-mining is pure pandas). The notebook runs offline too.
 
@@ -68,6 +75,7 @@ src/
   analysis.py             # anomalies, cost decomposition, capacity forecast, narration
 app/streamlit_app.py      # local 4-tab UI
 notebooks/netops_analysis.ipynb   # data-mining walkthrough
+tests/                    # unit tests (fake LLM, temp database)
 ```
 
 ## The data (synthetic)
@@ -85,7 +93,8 @@ results. No real or proprietary data.
   a rebuffer spike and a measurement artefact look alike. Robust-z on real CDN data would need
   a far more careful threshold.
 - **The text-to-SQL path has been verified against a mock model, not a paid API.** The guard,
-  the schema prompt and the execution path all run and are tested; what has not been measured
+  the schema prompt, the retry loop and the execution path are covered by `tests/` with a
+  scripted fake model; what has not been measured
   is how often a real model writes the wrong query for a right-sounding answer. That number is
   the one that would decide whether this is usable, and I do not have it yet.
 - The query guard is a keyword allow-list over single `SELECT` statements, so it can reject a
