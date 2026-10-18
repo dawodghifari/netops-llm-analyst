@@ -76,8 +76,11 @@ def is_safe_select(sql: str) -> bool:
     return bool(re.match(r"^(select|with)\b", s, re.IGNORECASE))
 
 
-def run_query(sql: str) -> pd.DataFrame:
-    """Execute a vetted read-only query and return a DataFrame."""
+def run_query(sql: str, params: tuple = ()) -> pd.DataFrame:
+    """Execute a vetted read-only query and return a DataFrame.
+
+    Values go in `params` as `?` placeholders, never into the SQL text.
+    """
     if not is_safe_select(sql):
         raise ValueError("Only a single read-only SELECT/WITH query is permitted.")
     con = connect()
@@ -85,7 +88,7 @@ def run_query(sql: str) -> pd.DataFrame:
     # SQLite calls this every N virtual-machine steps; a non-zero return aborts.
     con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10_000)
     try:
-        return pd.read_sql_query(sql, con)
+        return pd.read_sql_query(sql, con, params=params)
     except Exception as exc:
         if time.monotonic() > deadline:
             raise TimeoutError(

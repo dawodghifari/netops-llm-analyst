@@ -15,6 +15,11 @@ import pandas as pd
 from . import db
 
 
+# Column names cannot be bound as SQL parameters, so the metric is checked
+# against this list before it is placed in a query.
+QUALITY_METRICS = ("rebuffer_ratio_pct", "packet_loss_pct", "avg_latency_ms", "availability_pct")
+
+
 # ---- Quality governance ---------------------------------------------------
 def quality_anomalies(metric: str = "rebuffer_ratio_pct", z_thresh: float = 3.0) -> pd.DataFrame:
     """Per-PoP anomalies in a quality metric, flagged by robust z-score (median/MAD).
@@ -22,7 +27,9 @@ def quality_anomalies(metric: str = "rebuffer_ratio_pct", z_thresh: float = 3.0)
     Robust stats (median + MAD) are used instead of mean/std so a few incident days
     don't inflate the threshold and hide the rest.
     """
-    tel = db.run_query("SELECT date, pop_id, " + metric + " AS value FROM telemetry")
+    if metric not in QUALITY_METRICS:
+        raise ValueError(f"unknown quality metric {metric!r}; expected one of {QUALITY_METRICS}")
+    tel = db.run_query(f"SELECT date, pop_id, {metric} AS value FROM telemetry")
     out = []
     for pop_id, grp in tel.groupby("pop_id"):
         v = grp["value"].to_numpy()
@@ -43,9 +50,10 @@ def cost_by_pop(month: str | None = None) -> pd.DataFrame:
     if month is None:
         month = db.run_query("SELECT MAX(month) AS m FROM costs")["m"].iloc[0]
     df = db.run_query(
-        f"""SELECT pop_id, bandwidth_cost_usd, transit_cost_usd, hardware_amort_usd,
-                   total_bill_usd
-            FROM costs WHERE month = '{month}' ORDER BY total_bill_usd DESC"""
+        """SELECT pop_id, bandwidth_cost_usd, transit_cost_usd, hardware_amort_usd,
+                  total_bill_usd
+           FROM costs WHERE month = ? ORDER BY total_bill_usd DESC""",
+        (month,),
     )
     df["month"] = month
     return df
@@ -57,8 +65,8 @@ def decompose_cost_change(month_a: str, month_b: str) -> pd.DataFrame:
     Returns a tidy table of contributions (USD delta) so you can see exactly what
     drove the bill up or down — the core 'indicator decomposition' task.
     """
-    a = db.run_query(f"SELECT * FROM costs WHERE month='{month_a}'").set_index("pop_id")
-    b = db.run_query(f"SELECT * FROM costs WHERE month='{month_b}'").set_index("pop_id")
+    a = db.run_query("SELECT * FROM costs WHERE month = ?", (month_a,)).set_index("pop_id")
+    b = db.run_query("SELECT * FROM costs WHERE month = ?", (month_b,)).set_index("pop_id")
     comps = ["bandwidth_cost_usd", "transit_cost_usd", "hardware_amort_usd"]
     rows = []
     for pop_id in sorted(set(a.index) | set(b.index)):

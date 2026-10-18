@@ -112,10 +112,7 @@ with tab_cost:
 
 # ---- Quality --------------------------------------------------------------
 with tab_quality:
-    metric = st.selectbox(
-        "Quality KPI",
-        ["rebuffer_ratio_pct", "packet_loss_pct", "avg_latency_ms", "availability_pct"],
-    )
+    metric = st.selectbox("Quality KPI", list(analysis.QUALITY_METRICS))
     z = st.slider("Anomaly threshold (robust z)", 2.0, 6.0, 3.0, 0.5)
     an = analysis.quality_anomalies(metric, z)
     st.subheader(f"{len(an)} anomalous PoP-days in {metric}")
