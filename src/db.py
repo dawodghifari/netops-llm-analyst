@@ -3,6 +3,8 @@
 import os
 import re
 import sqlite3
+import time
+from pathlib import Path
 
 import pandas as pd
 
@@ -10,6 +12,10 @@ DB_PATH = os.environ.get(
     "NETOPS_DB",
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "netops.db"),
 )
+
+# Any single query is cancelled after this long, so a runaway query (an unbounded
+# WITH RECURSIVE, say) fails with an error instead of hanging the app.
+QUERY_TIMEOUT_SECONDS = float(os.environ.get("NETOPS_QUERY_TIMEOUT", "10"))
 
 # Only single read-only SELECT/WITH statements are allowed to reach the database.
 _FORBIDDEN = re.compile(
@@ -19,11 +25,17 @@ _FORBIDDEN = re.compile(
 
 
 def connect() -> sqlite3.Connection:
+    """Open the database READ-ONLY.
+
+    The query guard below is the first line of defence; this is the second. Even if
+    a write slipped past the guard, SQLite itself would refuse it. The data
+    generator opens its own read-write connection.
+    """
     if not os.path.exists(DB_PATH):
         raise FileNotFoundError(
             f"Database not found at {DB_PATH}. Run: python data/generate_data.py"
         )
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(Path(DB_PATH).resolve().as_uri() + "?mode=ro", uri=True)
 
 
 def table_names() -> list[str]:
@@ -69,7 +81,16 @@ def run_query(sql: str) -> pd.DataFrame:
     if not is_safe_select(sql):
         raise ValueError("Only a single read-only SELECT/WITH query is permitted.")
     con = connect()
+    deadline = time.monotonic() + QUERY_TIMEOUT_SECONDS
+    # SQLite calls this every N virtual-machine steps; a non-zero return aborts.
+    con.set_progress_handler(lambda: int(time.monotonic() > deadline), 10_000)
     try:
         return pd.read_sql_query(sql, con)
+    except Exception as exc:
+        if time.monotonic() > deadline:
+            raise TimeoutError(
+                f"Query cancelled after {QUERY_TIMEOUT_SECONDS:g}s."
+            ) from exc
+        raise
     finally:
         con.close()

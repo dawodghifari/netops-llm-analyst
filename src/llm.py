@@ -11,7 +11,7 @@ Env vars:
     LLM_MODEL           -> optional model override
 
 Keeping this behind one tiny interface means the rest of the app never cares which
-vendor is in use — a clean abstraction that's easy to talk about in an interview.
+vendor is in use.
 """
 
 import os
@@ -24,7 +24,7 @@ except Exception:  # noqa: BLE001
     pass
 
 DEFAULT_MODELS = {
-    "anthropic": "claude-3-5-sonnet-latest",
+    "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o-mini",
 }
 
