@@ -1,6 +1,7 @@
 """The deterministic analysis: every number the LLM later narrates."""
 
 import numpy as np
+import pytest
 
 from src import analysis, db
 
@@ -33,7 +34,8 @@ def test_cost_decomposition_adds_up_to_the_bill_change(netops_db):
     a, b = months[-2], months[-1]
     decomposition = analysis.decompose_cost_change(a, b)
     totals = db.run_query(
-        f"SELECT month, SUM(total_bill_usd) AS t FROM costs WHERE month IN ('{a}', '{b}') GROUP BY month"
+        "SELECT month, SUM(total_bill_usd) AS t FROM costs WHERE month IN (?, ?) GROUP BY month",
+        (a, b),
     ).set_index("month")["t"]
     assert np.isclose(decomposition["delta_usd"].sum(), totals[b] - totals[a], atol=1.0)
 
@@ -49,3 +51,20 @@ def test_narration_sends_the_table_to_the_model(netops_db, fake_llm):
     table = analysis.cost_by_pop()
     assert analysis.narrate_indicator("Cost by PoP", table, llm) == "Bandwidth drove the increase."
     assert "pop_id" in llm.calls[0]["user"]
+
+
+def test_unknown_metric_is_rejected_before_any_sql(netops_db):
+    with pytest.raises(ValueError, match="unknown quality metric"):
+        analysis.quality_anomalies("value FROM pops --")
+
+
+def test_every_listed_metric_runs(netops_db):
+    for metric in analysis.QUALITY_METRICS:
+        analysis.quality_anomalies(metric)
+
+
+def test_month_is_a_bound_parameter_not_sql(netops_db):
+    # Pasted into the old f-string query this became "month = '2026-01' OR '1'='1'"
+    # and returned every row. Bound as a parameter it is just a month that
+    # matches nothing.
+    assert analysis.cost_by_pop("2026-01' OR '1'='1").empty
