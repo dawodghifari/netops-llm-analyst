@@ -1,0 +1,8 @@
+# Lint for real bugs (pyflakes F) and hard errors (E4/E7/E9), without style
+# churn. The app and tests put the repo root on sys.path before importing src/.
+line-length = 110
+target-version = "py310"
+extend-exclude = ["notebooks"]  # exploratory; semicolons between plot calls are normal there
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

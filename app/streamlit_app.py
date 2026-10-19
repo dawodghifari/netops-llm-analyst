@@ -14,7 +14,6 @@ Four tabs:
 import os
 import sys
 
-import pandas as pd
 import streamlit as st
 
 # Make the `src` package importable when run from anywhere.
