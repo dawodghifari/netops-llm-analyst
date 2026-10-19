@@ -30,8 +30,8 @@ governance** can a language model do without ever being trusted to compute a num
   which PoP and which component (bandwidth / transit / hardware) drove the bill up or down.
 - **Quality governance.** Robust-z (median/MAD) **anomaly detection** on streaming KPIs
   (rebuffer ratio, packet loss, latency, availability).
-- **Capacity planning.** Per-PoP traffic-growth trend, projected utilisation, and
-  **days-to-capacity**.
+- **Capacity planning.** Per-PoP growth trend on the 7-day peak (so the weekly cycle doesn't
+  read as growth or headroom), projected utilisation, and **days-to-capacity**.
 - **LLM indicator narration.** Turn any decomposition table into a concise leadership-style
   governance briefing.
 
@@ -39,8 +39,9 @@ governance** can a language model do without ever being trusted to compute a num
 
 - **Provider-agnostic LLM** (`src/llm.py`): set `ANTHROPIC_API_KEY` *or* `OPENAI_API_KEY` and
   the app auto-detects the vendor — the rest of the code never cares which.
-- **Safety first**: the model only ever proposes SQL; execution goes through a read-only
-  allow-list (`src/db.is_safe_select`), so the LLM can't mutate data.
+- **Safety first**: the model only ever proposes SQL. Execution goes through an allow-list
+  (`src/db.is_safe_select`) and then runs on a **read-only** SQLite connection with a
+  10-second limit, so the LLM can't mutate data or hang the app.
 - **Maths in code, narration in the model**: all numbers come from deterministic pandas/numpy;
   the LLM only translates questions and explains results — so figures are trustworthy.
 
@@ -87,7 +88,9 @@ results. No real or proprietary data.
   the schema prompt and the execution path all run and are tested; what has not been measured
   is how often a real model writes the wrong query for a right-sounding answer. That number is
   the one that would decide whether this is usable, and I do not have it yet.
-- The read-only guard is an allow-list over single `SELECT` statements. It stops writes and
-  stacked statements. It is not a substitute for a database user with read-only grants.
-- Capacity forecasting is a linear trend on ~6 months of daily data. It will not see a step
+- The query guard is a keyword allow-list over single `SELECT` statements, so it can reject a
+  legitimate query (one that searches for the word "update", say). Writes are also refused by
+  the read-only connection itself, which is the real protection; the guard mainly gives the
+  model a clear error to retry from.
+- Capacity forecasting is a linear trend on ~6 months of 7-day peaks. It will not see a step
   change coming, which is the case that matters most.

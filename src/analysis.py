@@ -1,7 +1,7 @@
 """
 Data-mining and indicator analysis over the NetOps dataset (pure pandas/numpy — no
-LLM needed for the maths). Mirrors the JD: "construct and decompose indicators for
-... cost and quality governance" and "quantitative analysis in ... resource capacity".
+LLM needed for the maths): quality anomalies, cost decomposition, and capacity
+forecasting.
 
 Functions return tidy DataFrames so the Streamlit app and notebook can chart them,
 and the LLM can narrate them.
@@ -73,27 +73,45 @@ def decompose_cost_change(month_a: str, month_b: str) -> pd.DataFrame:
 
 # ---- Capacity planning ----------------------------------------------------
 def capacity_forecast(horizon_days: int = 30) -> pd.DataFrame:
-    """Per-PoP linear trend on peak traffic; project utilisation and days-to-capacity."""
+    """Per-PoP linear trend on peak traffic; project utilisation and days-to-capacity.
+
+    The trend is fitted to the 7-day rolling maximum of daily peaks, not to the
+    daily peaks themselves. Capacity is a peak problem: the question is when the
+    busiest day of the week crosses capacity. Fitting raw days mixes weekdays with
+    weekends (which run hotter here), so the latest day could sit far above the
+    trend, and a PoP already over capacity was reported as weeks away from it.
+
+    `current_*` is the latest 7-day peak; `trend_peak_gbps` is the fitted value on
+    the same day, so the projection can be read against it like for like.
+    """
     tel = db.run_query("SELECT date, pop_id, peak_traffic_gbps FROM telemetry")
     caps = db.run_query("SELECT pop_id, capacity_gbps FROM pops").set_index("pop_id")["capacity_gbps"]
     tel["date"] = pd.to_datetime(tel["date"])
     rows = []
     for pop_id, grp in tel.groupby("pop_id"):
-        grp = grp.sort_values("date")
-        t = (grp["date"] - grp["date"].min()).dt.days.to_numpy()
-        y = grp["peak_traffic_gbps"].to_numpy()
+        grp = grp.sort_values("date").set_index("date")
+        weekly_peak = grp["peak_traffic_gbps"].rolling("7D", min_periods=7).max().dropna()
+        t = (weekly_peak.index - weekly_peak.index.min()).days.to_numpy()
+        y = weekly_peak.to_numpy()
         slope, intercept = np.polyfit(t, y, 1)  # Gbps/day
         cap = float(caps[pop_id])
         current = float(y[-1])
+        trend_now = slope * t[-1] + intercept
         projected = slope * (t[-1] + horizon_days) + intercept
-        days_to_cap = (cap - intercept) / slope if slope > 0 else np.inf
-        days_left = days_to_cap - t[-1] if np.isfinite(days_to_cap) else np.inf
+        # A PoP already at or over capacity has no days left, whatever the trend says.
+        if current >= cap:
+            days_left = 0.0
+        elif slope > 0:
+            days_left = max(0.0, (cap - trend_now) / slope)
+        else:
+            days_left = np.inf
         rows.append(
             {
                 "pop_id": pop_id,
                 "capacity_gbps": round(cap, 1),
                 "current_peak_gbps": round(current, 1),
                 "current_util_pct": round(100 * current / cap, 1),
+                "trend_peak_gbps": round(trend_now, 1),
                 "growth_gbps_per_day": round(slope, 3),
                 f"projected_peak_{horizon_days}d_gbps": round(projected, 1),
                 f"projected_util_{horizon_days}d_pct": round(100 * projected / cap, 1),
